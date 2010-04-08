@@ -1,9 +1,0 @@
--module(splaytest).
-
--export([test_sets/0]).
-
-test_sets() ->
-    1.
-
-random_data(N) ->
-    [ {random:uniform(),I} || I <- lists:seq(1, N) ].
