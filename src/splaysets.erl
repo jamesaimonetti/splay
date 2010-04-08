@@ -3,11 +3,17 @@
 -export([new/0,is_set/1,size/1,to_list/1,from_list/1]).
 -export([is_element/2,add_element/2,del_element/2]).
 -export([union/2,union/1,intersection/2,intersection/1]).
--export([subtract/2,is_subset/2]).
+-export([subtract/2,is_subset/2,is_disjoint/2]).
 -export([fold/3,filter/2]).
  
 %% Extended interface.
 -export([all/2,any/2,foreach/2,partition/2]).
+
+%% More convenience functions
+-export([find_min/1, find_max/1, find_recent/1]).
+
+%% testing functions
+-export([height/1, merge/2]).
  
 %% Deprecated interface.
 -export([new_set/0,set_to_list/1,list_to_set/1,subset/2]).
@@ -31,6 +37,17 @@ is_set(#splay{lte=A, gt=B}) -> is_set(A) andalso is_set(B).
 size(empty) -> 0;
 size(#splay{lte=A, gt=B}) -> splaysets:size(A) + 1 + splaysets:size(B).
 
+%% height(Set) -> int()
+%% returns the height of the tree
+height(empty) -> 0;
+height(#splay{lte=A, gt=B}) ->
+    Ha = height(A),
+    Hb = height(B),
+    case Ha > Hb of
+        true -> 1 + Ha;
+        false -> 1 + Hb
+    end.
+
 %% to_list(Set) -> [Element].
 to_list(empty) -> [];
 to_list(#splay{lte=A, data=X, gt=B}) ->
@@ -40,7 +57,7 @@ to_list(#splay{lte=A, data=X, gt=B}) ->
 from_list(L) ->
     lists:foldl(fun add_element/2, new(), L).
 
-%% is_element(Element, Set) -> true | false.
+%% is_element(Element, Set) -> bool().
 is_element(_, empty) -> false;
 is_element(X, #splay{lte=A, data=Y}) when X < Y ->
     is_element(X, A);
@@ -50,9 +67,9 @@ is_element(X, #splay{data=X}) -> true.
 
 %% add_element(Element, Set) -> Set.
 add_element(X, T) ->
-    case is_element(X, T) of
+    case is_element(X, T) of % While splay heaps allow multiples of an element, Sets do not
         true -> T;
-        false ->
+        false -> 
             {Lte, Gt} = partition(X, T),
             #splay{lte=Lte, data=X, gt=Gt}
     end.
@@ -65,14 +82,6 @@ del_element(X, #splay{data=Y, gt=B}=T) when X > Y ->
     T#splay{gt=del_element(X, B)};
 del_element(X, #splay{lte=A, data=X, gt=B}) ->
     merge(A, B).
-
-%% del_min(Set) -> {Set, Element}.
-%del_min(#splay{lte=empty, gt=B}) -> {B, undefined};
-%del_min(#splay{lte=#splay{lte=empty, gt=B}, data=Y, gt=C}) ->
-%    {#splay{lte=B, data=Y, gt=C}, Y};
-%del_min(#splay{lte=#splay{lte=A, data=X, gt=B}, data=Y, gt=C}) ->
-%    {Lte, Min} = del_min(A),
-%    {#splay{lte=Lte, data=X, gt=#splay{lte=B, data=Y, gt=C}}, Min}.
 
 %% union(Set1, Set2) -> Set.
 %%   Returns the union of Set1 and Set2
@@ -106,6 +115,11 @@ subtract(S1, S2) ->
 %%   Return true is every element of S1 is a memeber of S2
 is_subset(S1, S2) ->
     all(fun(E) -> is_element(E, S2) end, S1).
+
+%% is_disjoint(Set1, Set2) -> bool()
+%%   Return true if Set1 has no elements in common with Set2
+is_disjoint(S1, S2) ->
+    all(fun(E) -> not is_element(E, S2) end, S1).
 
 %% fold(Fun, Acc, Set) -> Acc.
 fold(_, Acc, empty) -> Acc;
@@ -146,46 +160,59 @@ foreach(F, #splay{lte=A, data=X, gt=B}) ->
     F(X),
     foreach(F, B).
 
+merge(T, empty) -> T;
 merge(empty, T) -> T;
 merge(#splay{lte=A, data=X, gt=B}, T) ->
     {TA, TB} = partition(X, T),
     #splay{lte=merge(TA, A), data=X, gt=merge(TB, B)}.
 
+%% partition isn't concerned if there's duplicate data in the tree
 partition(_Pivot, empty) -> {empty,empty};
+partition(Pivot, #splay{lte=A, data=X, gt=B}=T) when X =< Pivot ->
+    case B of
+        empty ->
+            {T, B};
+        #splay{lte=B1, data=Y, gt=B2} ->
+            case Y =< Pivot of
+                true ->
+                    {Lte, Gt} = partition(Pivot, B2),
+                    {#splay{lte=#splay{lte=A, data=X, gt=B1}, data=Y, gt=Lte}, Gt};
+                false ->
+                    {Lte, Gt} = partition(Pivot, B1),
+                    {#splay{lte=A, data=X, gt=Lte}, #splay{lte=Gt, data=Y, gt=B2}}
+            end
+    end;
 partition(Pivot, #splay{lte=A, data=X, gt=B}=T) ->
-    case X =< Pivot of
-        true ->
-            case B of
-                empty ->
-                    {T, B};
-                #splay{lte=B1, data=Y, gt=B2} ->
-                    case Y =< Pivot of
-                        true ->
-                            {Lte, Gt} = partition(Pivot, B2),
-                            {#splay{lte=#splay{lte=A, data=X, gt=B1}, data=Y, gt=Lte}, Gt};
-                        false ->
-                            {Lte, Gt} = partition(Pivot, B1),
-                            {#splay{lte=A, data=X, gt=Lte}, #splay{lte=Gt, data=Y, gt=B2}}
-                    end
-            end;
-        false ->
-            case A of
-                empty ->
-                    {A, T};
-                #splay{lte=A1, data=Y, gt=A2} ->
-                    case Y =< Pivot of
-                        true ->
-                            {Lte, Gt} = partition(Pivot, A2),
-                            {#splay{lte=A1, data=Y, gt=Lte}, #splay{lte=Gt, data=X, gt=B}};
-                        false ->
-                            {Lte, Gt} = partition(Pivot, A1),
-                            {Lte, #splay{lte=Gt, data=Y, gt=#splay{lte=A2, data=X, gt=B}}}
-                    end
+    case A of
+        empty ->
+            {A, T};
+        #splay{lte=A1, data=Y, gt=A2} ->
+            case Y =< Pivot of
+                true ->
+                    {Lte, Gt} = partition(Pivot, A2),
+                    {#splay{lte=A1, data=Y, gt=Lte}, #splay{lte=Gt, data=X, gt=B}};
+                false ->
+                    {Lte, Gt} = partition(Pivot, A1),
+                    {Lte, #splay{lte=Gt, data=Y, gt=#splay{lte=A2, data=X, gt=B}}}
             end
     end.
 
-%find_min(#splay{lte=empty, data=Min}) -> Min;
-%find_min(#splay{lte=A}) -> find_min(A).
+%% find_min(Set) -> term().
+%% returns the smallest datum
+find_min(#splay{lte=empty, data=Min}) -> Min;
+find_min(#splay{lte=A}) -> find_min(A);
+find_min(empty) -> undefined.
+
+%% find_max(Set) -> term().
+%% returns the largest datum
+find_max(#splay{data=Max, gt=empty}) -> Max;
+find_max(#splay{gt=B}) -> find_max(B);
+find_max(empty) -> undefined.
+
+%% find_recent(Set) -> term().
+%% returns the most recent datum (the root)
+find_recent(empty) -> undefined;
+find_recent(#splay{data=R}) -> R.
 
 %% Deprecated interface.
  

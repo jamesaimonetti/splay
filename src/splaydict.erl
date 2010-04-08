@@ -5,6 +5,10 @@
 -export([store/3,append/3,append_list/3]).
 -export([update_val/3,update/3,update/4,update_counter/3]).
 -export([fold/3,map/2,filter/2,merge/3]).
+
+
+%% testing functions
+-export([height/1]).
  
 %% Deprecated interface.
 -export([dict_to_list/1,list_to_dict/1]).
@@ -43,8 +47,19 @@ from_list(L) ->
 size(empty) -> 0;
 size(#splay{lte=A, gt=B}) -> splaydict:size(A) + 1 + splaydict:size(B).
 
-%% fetch(Key, Dict) -> Value.
+%% height(Dict) -> int()
+%% returns the height of the tree
+height(empty) -> 0;
+height(#splay{lte=A, gt=B}) ->
+    Ha = height(A),
+    Hb = height(B),
+    case Ha > Hb of
+        true -> 1 + Ha;
+        false -> 1 + Hb
+    end.
 
+
+%% fetch(Key, Dict) -> Value.
 fetch(K, #splay{lte=A, key=K1}) when K < K1 ->
     fetch(K, A);
 fetch(K, #splay{key=K1, gt=B}) when K > K1 ->
@@ -186,35 +201,32 @@ merge_dict(#splay{lte=A, key=K, gt=B}, T) ->
     #splay{lte=merge_dict(TA, A), key=K, gt=merge_dict(TB, B)}.
 
 partition(_Pivot, empty) -> {empty,empty};
+partition(Pivot, #splay{lte=A, key=K, value=V, gt=B}=T) when K =< Pivot ->
+    case B of
+        empty ->
+            {T, B};
+        #splay{lte=B1, key=K1, value=V1, gt=B2} ->
+            case K1 =< Pivot of
+                true ->
+                    {Lte, Gt} = partition(Pivot, B2),
+                    {#splay{lte=#splay{lte=A, key=K, value=V, gt=B1}, key=K1, value=V1, gt=Lte}, Gt};
+                false ->
+                    {Lte, Gt} = partition(Pivot, B1),
+                    {#splay{lte=A, key=K, value=V, gt=Lte}, #splay{lte=Gt, key=K1, value=V1, gt=B2}}
+            end
+    end;
 partition(Pivot, #splay{lte=A, key=K, value=V, gt=B}=T) ->
-    case K =< Pivot of
-        true ->
-            case B of
-                empty ->
-                    {T, B};
-                #splay{lte=B1, key=K1, value=V1, gt=B2} ->
-                    case K1 =< Pivot of
-                        true ->
-                            {Lte, Gt} = partition(Pivot, B2),
-                            {#splay{lte=#splay{lte=A, key=K, value=V, gt=B1}, key=K1, value=V1, gt=Lte}, Gt};
-                        false ->
-                            {Lte, Gt} = partition(Pivot, B1),
-                            {#splay{lte=A, key=K, value=V, gt=Lte}, #splay{lte=Gt, key=K1, value=V1, gt=B2}}
-                    end
-            end;
-        false ->
-            case A of
-                empty ->
-                    {A, T};
-                #splay{lte=A1, key=K1, value=V1, gt=A2} ->
-                    case K1 =< Pivot of
-                        true ->
-                            {Lte, Gt} = partition(Pivot, A2),
-                            {#splay{lte=A1, key=K1, value=V1, gt=Lte}, #splay{lte=Gt, key=K, value=V, gt=B}};
-                        false ->
-                            {Lte, Gt} = partition(Pivot, A1),
-                            {Lte, #splay{lte=Gt, key=K1, value=V1, gt=#splay{lte=A2, key=K, value=V, gt=B}}}
-                    end
+    case A of
+        empty ->
+            {A, T};
+        #splay{lte=A1, key=K1, value=V1, gt=A2} ->
+            case K1 =< Pivot of
+                true ->
+                    {Lte, Gt} = partition(Pivot, A2),
+                    {#splay{lte=A1, key=K1, value=V1, gt=Lte}, #splay{lte=Gt, key=K, value=V, gt=B}};
+                false ->
+                    {Lte, Gt} = partition(Pivot, A1),
+                    {Lte, #splay{lte=Gt, key=K1, value=V1, gt=#splay{lte=A2, key=K, value=V, gt=B}}}
             end
     end.
 
